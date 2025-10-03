@@ -87,6 +87,9 @@ type CopilotCollector struct {
 	team         string
 	enterprise   string
 
+	// For testing: allows injection of mock data
+	testMetricsFetcher func() (CopilotAPIResponse, error)
+
 	// Top-level metrics
 	totalSuggestions     *prometheus.Desc
 	totalAcceptances     *prometheus.Desc
@@ -295,7 +298,17 @@ func (c *CopilotCollector) Describe(ch chan<- *prometheus.Desc) {
 
 func (c *CopilotCollector) Collect(ch chan<- prometheus.Metric) {
 	// Fetch fresh metrics on every scrape - no caching
-	metrics, err := c.fetchMetrics()
+	var metrics CopilotAPIResponse
+	var err error
+
+	if c.testMetricsFetcher != nil {
+		// Use test fetcher for testing
+		metrics, err = c.testMetricsFetcher()
+	} else {
+		// Use real API in production
+		metrics, err = c.fetchMetrics()
+	}
+
 	if err != nil {
 		log.Printf("Error fetching metrics: %v", err)
 		return
