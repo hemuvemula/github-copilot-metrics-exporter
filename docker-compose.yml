@@ -5,15 +5,16 @@ services:
     build: .
     container_name: github-copilot-metrics-exporter
     ports:
-      - "9101:9101"
+      - "8082:8082"
     environment:
       - GITHUB_TOKEN=${GITHUB_TOKEN}
       - GITHUB_ORG=${GITHUB_ORG}
       - GITHUB_TEAM=${GITHUB_TEAM}
-      - PORT=9101
+      - PORT=8082
+      - SCRAPE_INTERVAL=${SCRAPE_INTERVAL:-3600}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9101/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8082/health"]
       interval: 30s
       timeout: 10s
       retries: 3

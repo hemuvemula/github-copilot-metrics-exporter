@@ -42,7 +42,8 @@ The exporter is configured using environment variables:
 | `GITHUB_ORG` | Conditional | GitHub organization name (required if `GITHUB_ENTERPRISE` is not set) |
 | `GITHUB_TEAM` | No | GitHub team slug (optional, for team-specific metrics) |
 | `GITHUB_ENTERPRISE` | Conditional | GitHub enterprise name (required if `GITHUB_ORG` is not set) |
-| `PORT` | No | Port to listen on (default: 9101) |
+| `PORT` | No | Port to listen on (default: 8082) |
+| `SCRAPE_INTERVAL` | No | Interval in seconds to fetch metrics from GitHub API (default: 3600 - 1 hour) |
 
 ### GitHub Token Permissions
 
@@ -77,14 +78,23 @@ export GITHUB_ENTERPRISE="your_enterprise"
 ./github-copilot-metrics-exporter
 ```
 
-### Custom Port
+### Custom Port and Scrape Interval
 
 ```bash
 export GITHUB_TOKEN="your_github_token"
 export GITHUB_ORG="your_organization"
 export PORT="8080"
+export SCRAPE_INTERVAL="1800"  # 30 minutes
 ./github-copilot-metrics-exporter
 ```
+
+## How It Works
+
+The exporter fetches GitHub Copilot metrics from the GitHub API at a configurable interval (default: 1 hour) and caches the results. When Prometheus scrapes the `/metrics` endpoint, it serves the cached data. This approach:
+
+- Reduces API calls to GitHub (respecting rate limits)
+- Provides consistent data across multiple Prometheus scrapes
+- Ensures fresh data is fetched automatically at the configured interval
 
 ## Endpoints
 
@@ -115,7 +125,7 @@ scrape_configs:
   - job_name: 'github-copilot'
     scrape_interval: 5m
     static_configs:
-      - targets: ['localhost:9101']
+      - targets: ['localhost:8082']
 ```
 
 ## Docker
@@ -130,9 +140,10 @@ docker build -t github-copilot-metrics-exporter .
 
 ```bash
 docker run -d \
-  -p 9101:9101 \
+  -p 8082:8082 \
   -e GITHUB_TOKEN="your_github_token" \
   -e GITHUB_ORG="your_organization" \
+  -e SCRAPE_INTERVAL="3600" \
   github-copilot-metrics-exporter
 ```
 

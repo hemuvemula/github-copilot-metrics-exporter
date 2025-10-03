@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -14,8 +16,9 @@ import (
 )
 
 const (
-	defaultPort     = "9101"
-	metricsEndpoint = "/metrics"
+	defaultPort           = "8082"
+	defaultScrapeInterval = 3600 // 1 hour in seconds
+	metricsEndpoint       = "/metrics"
 )
 
 type CopilotMetrics struct {
@@ -46,6 +49,10 @@ type CopilotCollector struct {
 	organization         string
 	team                 string
 	enterprise           string
+	scrapeInterval       time.Duration
+	cachedMetrics        CopilotAPIResponse
+	lastScrapeTime       time.Time
+	mu                   sync.RWMutex
 	totalSuggestions     *prometheus.Desc
 	totalAcceptances     *prometheus.Desc
 	totalLinesSuggested  *prometheus.Desc
@@ -57,12 +64,13 @@ type CopilotCollector struct {
 	acceptanceRate       *prometheus.Desc
 }
 
-func NewCopilotCollector(githubToken, organization, team, enterprise string) *CopilotCollector {
+func NewCopilotCollector(githubToken, organization, team, enterprise string, scrapeInterval time.Duration) *CopilotCollector {
 	return &CopilotCollector{
-		githubToken:  githubToken,
-		organization: organization,
-		team:         team,
-		enterprise:   enterprise,
+		githubToken:    githubToken,
+		organization:   organization,
+		team:           team,
+		enterprise:     enterprise,
+		scrapeInterval: scrapeInterval,
 		totalSuggestions: prometheus.NewDesc(
 			"github_copilot_suggestions_total",
 			"Total number of Copilot suggestions",
@@ -133,11 +141,29 @@ func (c *CopilotCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (c *CopilotCollector) Collect(ch chan<- prometheus.Metric) {
-	metrics, err := c.fetchMetrics()
-	if err != nil {
-		log.Printf("Error fetching metrics: %v", err)
-		return
+	c.mu.RLock()
+	shouldRefresh := time.Since(c.lastScrapeTime) >= c.scrapeInterval
+	c.mu.RUnlock()
+
+	if shouldRefresh {
+		c.mu.Lock()
+		// Double-check after acquiring write lock
+		if time.Since(c.lastScrapeTime) >= c.scrapeInterval {
+			metrics, err := c.fetchMetrics()
+			if err != nil {
+				log.Printf("Error fetching metrics: %v", err)
+			} else {
+				c.cachedMetrics = metrics
+				c.lastScrapeTime = time.Now()
+				log.Printf("Successfully refreshed metrics from GitHub API")
+			}
+		}
+		c.mu.Unlock()
 	}
+
+	c.mu.RLock()
+	metrics := c.cachedMetrics
+	c.mu.RUnlock()
 
 	for _, metric := range metrics {
 		day := metric.Day
@@ -273,8 +299,32 @@ func main() {
 		port = defaultPort
 	}
 
-	collector := NewCopilotCollector(githubToken, organization, team, enterprise)
+	scrapeIntervalStr := os.Getenv("SCRAPE_INTERVAL")
+	scrapeIntervalSeconds := defaultScrapeInterval
+	if scrapeIntervalStr != "" {
+		if val, err := strconv.Atoi(scrapeIntervalStr); err == nil && val > 0 {
+			scrapeIntervalSeconds = val
+		} else {
+			log.Printf("Invalid SCRAPE_INTERVAL value '%s', using default %d seconds", scrapeIntervalStr, defaultScrapeInterval)
+		}
+	}
+	scrapeInterval := time.Duration(scrapeIntervalSeconds) * time.Second
+
+	collector := NewCopilotCollector(githubToken, organization, team, enterprise, scrapeInterval)
 	prometheus.MustRegister(collector)
+
+	// Perform initial fetch
+	log.Printf("Performing initial metrics fetch from GitHub API...")
+	collector.mu.Lock()
+	metrics, err := collector.fetchMetrics()
+	if err != nil {
+		log.Printf("Warning: Initial metrics fetch failed: %v", err)
+	} else {
+		collector.cachedMetrics = metrics
+		collector.lastScrapeTime = time.Now()
+		log.Printf("Initial metrics fetch successful")
+	}
+	collector.mu.Unlock()
 
 	http.Handle(metricsEndpoint, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -293,6 +343,7 @@ func main() {
 	})
 
 	log.Printf("Starting GitHub Copilot Metrics Exporter on port %s", port)
+	log.Printf("Scrape interval: %d seconds (%s)", scrapeIntervalSeconds, scrapeInterval)
 	log.Printf("Metrics available at http://localhost:%s%s", port, metricsEndpoint)
 
 	if err := http.ListenAndServe(":"+port, nil); err != nil {

@@ -26,7 +26,7 @@ WORKDIR /root/
 COPY --from=builder /app/github-copilot-metrics-exporter .
 
 # Expose the default port
-EXPOSE 9101
+EXPOSE 8082
 
 # Run the binary
 CMD ["./github-copilot-metrics-exporter"]
