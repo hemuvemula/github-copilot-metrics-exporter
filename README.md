@@ -4,14 +4,17 @@ A Prometheus exporter for GitHub Copilot metrics that scrapes the [GitHub Copilo
 
 ## Features
 
-- Exports GitHub Copilot usage metrics for organizations, teams, or enterprises
-- Provides metrics on:
-  - Total suggestions and acceptances
-  - Lines suggested and accepted
-  - Active users
-  - Chat acceptances and turns
-  - Active chat users
+- Exports comprehensive GitHub Copilot usage metrics for organizations, teams, or enterprises
+- **Complete API coverage**: Captures ALL data points from the GitHub Copilot Metrics API including:
+  - Total suggestions, acceptances, lines suggested/accepted
+  - Active users and chat metrics
+  - Breakdown by language, editor, and model
+  - IDE Code Completions metrics with detailed breakdowns
+  - IDE Chat metrics with editor and model breakdowns
+  - Dotcom Chat metrics with model breakdowns
+  - Dotcom Pull Requests metrics with repository-level details
   - Acceptance rate (calculated metric)
+- **Real-time data**: Fetches fresh data from GitHub API on each Prometheus scrape (no caching)
 - Easy configuration via environment variables
 - Health check endpoint
 - Compatible with Prometheus and Grafana
@@ -43,7 +46,6 @@ The exporter is configured using environment variables:
 | `GITHUB_TEAM` | No | GitHub team slug (optional, for team-specific metrics) |
 | `GITHUB_ENTERPRISE` | Conditional | GitHub enterprise name (required if `GITHUB_ORG` is not set) |
 | `PORT` | No | Port to listen on (default: 8082) |
-| `SCRAPE_INTERVAL` | No | Interval in seconds to fetch metrics from GitHub API (default: 3600 - 1 hour) |
 
 ### GitHub Token Permissions
 
@@ -78,23 +80,25 @@ export GITHUB_ENTERPRISE="your_enterprise"
 ./github-copilot-metrics-exporter
 ```
 
-### Custom Port and Scrape Interval
+### Custom Port
 
 ```bash
 export GITHUB_TOKEN="your_github_token"
 export GITHUB_ORG="your_organization"
 export PORT="8080"
-export SCRAPE_INTERVAL="1800"  # 30 minutes
 ./github-copilot-metrics-exporter
 ```
 
 ## How It Works
 
-The exporter fetches GitHub Copilot metrics from the GitHub API at a configurable interval (default: 1 hour) and caches the results. When Prometheus scrapes the `/metrics` endpoint, it serves the cached data. This approach:
+The exporter fetches GitHub Copilot metrics from the GitHub API on every Prometheus scrape request. This ensures you always get the most up-to-date data. The exporter captures ALL fields from the API response including:
 
-- Reduces API calls to GitHub (respecting rate limits)
-- Provides consistent data across multiple Prometheus scrapes
-- Ensures fresh data is fetched automatically at the configured interval
+- Aggregate daily metrics
+- Breakdown by programming language, editor, and AI model
+- IDE Code Completions with detailed categorization
+- IDE Chat metrics
+- Dotcom Chat metrics
+- Dotcom Pull Requests metrics with repository-level details
 
 ## Endpoints
 
@@ -103,6 +107,8 @@ The exporter fetches GitHub Copilot metrics from the GitHub API at a configurabl
 - `/health` - Health check endpoint
 
 ## Exported Metrics
+
+### Top-Level Aggregate Metrics
 
 All metrics include labels `day` (date) and `org` (organization or enterprise name).
 
@@ -117,6 +123,31 @@ All metrics include labels `day` (date) and `org` (organization or enterprise na
 | `github_copilot_chat_turns_total` | Gauge | Total number of Copilot chat turns |
 | `github_copilot_active_chat_users_total` | Gauge | Total number of active Copilot chat users |
 | `github_copilot_acceptance_rate` | Gauge | Copilot acceptance rate (acceptances/suggestions) |
+
+### Breakdown Metrics
+
+These metrics include additional labels: `language`, `editor`, and `model` to provide detailed breakdowns.
+
+| Metric Name | Type | Description |
+|-------------|------|-------------|
+| `github_copilot_breakdown_suggestions_total` | Gauge | Suggestions by language/editor/model |
+| `github_copilot_breakdown_acceptances_total` | Gauge | Acceptances by language/editor/model |
+| `github_copilot_breakdown_lines_suggested_total` | Gauge | Lines suggested by language/editor/model |
+| `github_copilot_breakdown_lines_accepted_total` | Gauge | Lines accepted by language/editor/model |
+| `github_copilot_breakdown_active_users` | Gauge | Active users by language/editor/model |
+| `github_copilot_breakdown_chat_acceptances_total` | Gauge | Chat acceptances by language/editor/model |
+| `github_copilot_breakdown_chat_turns_total` | Gauge | Chat turns by language/editor/model |
+| `github_copilot_breakdown_active_chat_users` | Gauge | Active chat users by language/editor/model |
+
+### Feature-Specific Metrics
+
+| Metric Name | Type | Description |
+|-------------|------|-------------|
+| `github_copilot_ide_code_completions_engaged_users` | Gauge | Total engaged users for IDE code completions |
+| `github_copilot_ide_chat_engaged_users` | Gauge | Total engaged users for IDE chat |
+| `github_copilot_dotcom_chat_engaged_users` | Gauge | Total engaged users for Dotcom chat |
+| `github_copilot_dotcom_pr_engaged_users` | Gauge | Total engaged users for Dotcom pull requests |
+| `github_copilot_dotcom_pr_repo_engaged_users` | Gauge | Engaged users for Dotcom pull requests by repository (includes `repository` label) |
 
 ## Example Prometheus Configuration
 
@@ -143,7 +174,6 @@ docker run -d \
   -p 8082:8082 \
   -e GITHUB_TOKEN="your_github_token" \
   -e GITHUB_ORG="your_organization" \
-  -e SCRAPE_INTERVAL="3600" \
   github-copilot-metrics-exporter
 ```
 
@@ -162,6 +192,21 @@ sum(github_copilot_suggestions_total{org="your_org"})
 ### Active users trend
 ```promql
 github_copilot_active_users_total{org="your_org"}
+```
+
+### Breakdown by programming language
+```promql
+github_copilot_breakdown_suggestions_total{language!=""}
+```
+
+### IDE Chat engaged users by editor
+```promql
+github_copilot_breakdown_active_chat_users{editor!=""}
+```
+
+### Model usage across all features
+```promql
+github_copilot_breakdown_suggestions_total{model!=""}
 ```
 
 ## Development

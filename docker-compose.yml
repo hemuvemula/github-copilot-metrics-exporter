@@ -11,7 +11,6 @@ services:
       - GITHUB_ORG=${GITHUB_ORG}
       - GITHUB_TEAM=${GITHUB_TEAM}
       - PORT=8082
-      - SCRAPE_INTERVAL=${SCRAPE_INTERVAL:-3600}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8082/health"]
