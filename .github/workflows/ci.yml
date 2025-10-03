@@ -34,7 +34,7 @@ jobs:
       run: go build -v -o github-copilot-metrics-exporter .
     
     - name: Upload artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: github-copilot-metrics-exporter
         path: github-copilot-metrics-exporter
