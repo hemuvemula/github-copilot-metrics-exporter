@@ -1,0 +1,7 @@
+.git
+.gitignore
+README.md
+*.test
+*.out
+github-copilot-metrics-exporter
+.env
